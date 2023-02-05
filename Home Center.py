@@ -2,14 +2,21 @@ from time import sleep, localtime
 from threading import Thread
 from tm1637 import TM1637
 import Adafruit_DHT
-import drivers
+# import drivers
 import RPi.GPIO as GPIO
+# import board
+# import busio
+# import adafruit_character_lcd.character_lcd_i2c as character_lcd
+import drivers
 
-# import socket
-# import fcntl
-# import struct
-import os
+
 import subprocess
+
+lcd_columns = 20
+lcd_rows = 4
+# i2cAddress = 0x27
+display = drivers.Lcd()
+# display.lcd_backlight(1)
 
 
 DIOHora = 27
@@ -18,21 +25,12 @@ CLKHora = 22
 DIOCronometro = 17
 CLKCronometro = 4
 
-display = drivers.Lcd()
-pin_btn = 21
+pin_btn_central = 21
 
 GPIO.setmode(GPIO.BCM)
-GPIO.setup(pin_btn, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(pin_btn_central, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
 ip = subprocess.check_output(['hostname', '-I']).decode().strip()
-
-# def get_ip_address(ifname):
-#     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-#     return socket.inet_ntoa(fcntl.ioctl(
-#         s.fileno(),
-#         0x8915,
-#         struct.pack('256s', ifname[:15])
-#     )[20:24])
 
 
 class Clock:
@@ -76,47 +74,46 @@ class Lcd20x4:
     def __init__(self):
         self.running = True
 
-        # s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # return socket.inet_ntoa(fcntl.ioctl(
-        #     s.fileno(),
-        #     0x8915,
-        #     struct.pack('256s', ifname[:15])
-        # )[20:24])
-
     def run(self):
         horaJapon = 0
+        encendidoLuz = False
         diaSiguiente = False
+        tiempoLuz = 10
 
         while True:
-            if GPIO.input(pin_btn) == GPIO.HIGH:
-                print('Me estas tocando bb')
-                # display.lcd_display_extended_string('Luz Encendida', 4)
-            # else:
-                # display.lcd_display_extended_string('Luz Apagada     ', 4)
-            display.lcd_display_string(ip, 4)
-
             t = localtime()
             tiempoHora = t.tm_hour
             tiempoMin = t.tm_min
+            tiempoSegundos = t.tm_sec
+
             horaJapon = tiempoHora + 15
             if horaJapon > 24:
                 horaJapon = horaJapon - 24
                 diaSiguiente = True
-            if diaSiguiente == True:
-                display.lcd_display_string(
-                    'Tokyo: ' + str(horaJapon) + ':' + str(tiempoMin) + ' |*|', 1)
 
+            if GPIO.input(pin_btn_central) == GPIO.HIGH:
+                if diaSiguiente == True:
+                    display.lcd_display_string(
+                        'Tokyo: ' + str(horaJapon) + ':' + str(tiempoMin) + ' |*|   ', 1)
+                else:
+                    display.lcd_display_string(
+                        'Tokyo: ' + str(horaJapon) + ':' + str(tiempoMin) + '       ', 1)
+                display.lcd_display_string(ip, 4)
+                encendidoLuz = True
+                tiempoLuz = t.tm_sec
+
+            if encendidoLuz == True and tiempoSegundos <= tiempoLuz + 2 and GPIO.input(pin_btn_central) == GPIO.LOW:
+                display.lcd_backlight(1)
             else:
-                display.lcd_display_string(
-                    'Tokyo: ' + str(horaJapon) + ':' + str(tiempoMin) + '      ', 1)
+                display.lcd_backlight(0)
+                encendidoLuz = False
 
 
 if __name__ == '__main__':
-    display.lcd_backlight(0)
     tm = TM1637(CLKHora, DIOHora)
     tm.brightness(7)
-    Reloj = Clock(tm)
 
+    Reloj = Clock(tm)
     RelojThread = Thread(target=Reloj.run)
     RelojThread.start()
 
